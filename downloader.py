@@ -11,7 +11,6 @@ from librespot.metadata import TrackId, EpisodeId
 from yt_dlp import YoutubeDL
 
 from .accounts import get_account_token
-# ----- API imports -----
 from .api.apple_music import apple_music_get_track_metadata, apple_music_get_decryption_key, apple_music_get_lyrics, apple_music_get_webplayback_info
 from .api.bandcamp import bandcamp_get_track_metadata
 from .api.deezer import deezer_get_track_metadata, get_song_info_from_deezer_website, genurlkey, calcbfkey, decryptfile
@@ -21,7 +20,6 @@ from .api.spotify import spotify_get_track_metadata, spotify_get_episode_metadat
 from .api.tidal import tidal_get_track_metadata, tidal_get_lyrics, tidal_get_file_url
 from .api.youtube_music import youtube_music_get_track_metadata
 from .api.generic import generic_get_track_metadata
-# -----------------------
 from .otsconfig import config
 from .runtimedata import get_logger, download_queue, download_queue_lock, account_pool, temp_download_path
 from .utils import (
@@ -371,7 +369,7 @@ class DownloadWorker(QObject):
                     # ---------------------------------------------------------
                     elif item_service == "soundcloud":
 
-                        song = soundcloud_fetch_track_data(token, item_id)
+                        song = soundcloud_fetch_track_data(token, item_id, use_cache=True, cache_duration=3600)
                         permalink_url =song.get("permalink_url")
                         transcodings = song.get('media', {}).get('transcodings', [])
                         
