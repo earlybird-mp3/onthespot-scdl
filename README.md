@@ -1,5 +1,5 @@
 # onthespot-scdl
-onthespot-10-7 SoundCloud Premium Downloads
+onthespot-1-0-7 SoundCloud Premium Downloads
 
 These are the needed files for adding the SoundCloud Go + download features to [onthespot-1-0-7](https://github.com/justin025/onthespot/releases/tag/v1.0.7).
 Simply replace the original files with the 3 files uploaded in this repo.
