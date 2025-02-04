@@ -369,7 +369,7 @@ class DownloadWorker(QObject):
                     # ---------------------------------------------------------
                     elif item_service == "soundcloud":
 
-                        song = soundcloud_fetch_track_data(token, item_id, use_cache=True, cache_duration=3600)
+                        song = soundcloud_fetch_track_data(token, item_id)
                         permalink_url =song.get("permalink_url")
                         transcodings = song.get('media', {}).get('transcodings', [])
                         
