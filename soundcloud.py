@@ -5,6 +5,7 @@ import requests
 import subprocess
 import tempfile
 import uuid
+import time
 
 
 from ..otsconfig import config
@@ -16,6 +17,8 @@ logger = get_logger("api.soundcloud")
 BASE_URL = 'https://api-v2.soundcloud.com'
 SC_SITE_URL = 'https://soundcloud.com'
 VERIFY_AUTH_URL = "https://api-auth.soundcloud.com/connect/session"
+
+_soundcloud_cache = {}
 
 
 def soundcloud_parse_url(url, token):
@@ -260,18 +263,19 @@ def soundcloud_get_token(parsing_index):
     Returns the token dictionary from account_pool.
     Possibly includes 'oauth_token' if it's a premium account.
     """
-    client_id = account_pool[parsing_index]['login']["client_id"]
-    app_version = account_pool[parsing_index]['login']["app_version"]
-    app_locale = account_pool[parsing_index]['login']["app_locale"]
-    # optional
-    oauth_token = account_pool[parsing_index]['login'].get("oauth_token")
+    # client_id = account_pool[parsing_index]['login']["client_id"]
+    # app_version = account_pool[parsing_index]['login']["app_version"]
+    # app_locale = account_pool[parsing_index]['login']["app_locale"]
+    # # optional
+    # oauth_token = account_pool[parsing_index]['login'].get("oauth_token")
 
-    return {
-        "client_id": client_id,
-        "app_version": app_version,
-        "app_locale": app_locale,
-        "oauth_token": oauth_token,
-    }
+    # return {
+    #     "client_id": client_id,
+    #     "app_version": app_version,
+    #     "app_locale": app_locale,
+    #     "oauth_token": oauth_token,
+    # }
+    return account_pool[parsing_index]['login']
 
 
 def _get_request_headers(token):
@@ -382,8 +386,8 @@ def soundcloud_get_track_metadata(token, item_id):
         "app_version": token['app_version'],
         "app_locale": token['app_locale']
     }
-
-    track_data = make_call(f"{BASE_URL}/tracks/{item_id}", headers=headers, params=params)
+    track_data = _get_track_data(token, item_id, use_cache=True, cache_duration=3600)
+    # track_data = make_call(f"{BASE_URL}/tracks/{item_id}", headers=headers, params=params)
 
     # Attempt to parse album from track's webpage
     track_webpage = make_call(f"{track_data['permalink_url']}/albums", text=True)
@@ -478,23 +482,47 @@ def soundcloud_get_track_metadata(token, item_id):
 # -----------------------
 # NEW FUNCTIONS FOR HQ, HLS, ETC.
 # -----------------------
+def _get_track_data(token, item_id, use_cache=True, cache_duration=3600):
+    """
+    Internal helper that checks the single cache for track data. If not found
+    or expired, fetch from SoundCloud's /tracks/<item_id> and store it.
+    """
+    current_time = time.time()
 
-def soundcloud_fetch_track_data(token, item_id):
-    """
-    Retrieve the full JSON from SoundCloud /tracks/<item_id>,
-    including track_authorization, media transcodings, etc.
-    """
+    # 1) Check the cache
+    if use_cache and item_id in _soundcloud_cache:
+        cached_track, cached_time = _soundcloud_cache[item_id]
+        if (current_time - cached_time) < cache_duration:
+            # Cache is still valid
+            logger.debug(f"[_get_track_data] Returning cached data for item_id={item_id}")
+            return cached_track
+        else:
+            logger.debug(f"[_get_track_data] Cache expired for item_id={item_id}, re-fetching...")
+
+    # 2) Not in cache (or cache expired), so fetch from the API
     headers = _get_request_headers(token)
-    params = {
-        "client_id": token['client_id'],
-    }
-    url = f"{BASE_URL}/tracks/{item_id}"
-    track_data = requests.get(url, params=params, headers=headers)
-    if track_data.status_code == 401 or track_data.status_code == 403:
-        logger.error("Unauthorized to view this track. Possibly private or invalid token.")
-    track_data.raise_for_status()
-    track_data = track_data.json()
+    params = {"client_id": token["client_id"]}
 
+    url = f"{BASE_URL}/tracks/{item_id}"
+    response = requests.get(url, headers=headers, params=params)
+    if response.status_code in (401, 403):
+        logger.error("Unauthorized to view this track. Possibly private or invalid token.")
+    response.raise_for_status()
+    raw_data = response.json()
+
+    # 3) Store raw_data in the single cache dictionary
+    if use_cache:
+        _soundcloud_cache[item_id] = (raw_data, current_time)
+        logger.debug(f"[_get_track_data] Cached new data for item_id={item_id}")
+
+    return raw_data
+
+def soundcloud_fetch_track_data(token, item_id, use_cache=True, cache_duration=3600):
+    """
+    Public function that returns the full JSON from SoundCloud /tracks/<item_id>.
+    Reuses a single cache via _get_track_data.
+    """
+    track_data = _get_track_data(token, item_id, use_cache, cache_duration)
     return track_data
 
 
@@ -538,9 +566,9 @@ def soundcloud_download_track(token, item_id, hq=True, output_path=None):
     Now with extra logging to see what's going on internally.
     """
     # 1) Retrieve track data
-    track_data = soundcloud_fetch_track_data(token, item_id)
+    track_data = soundcloud_fetch_track_data(token, item_id, use_cache=True, cache_duration=3600)
     transcodings = track_data.get("media", {}).get("transcodings", [])
-    track_auth = track_data.get("track_authorization")
+    #track_auth = track_data.get("track_authorization")
 
     # Log presence of OAuth token
     if token.get('oauth_token'):
